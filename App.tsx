@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import { Routes, Route, useNavigate, useParams, Link, useLocation } from 'react-router-dom';
-import { BLOG_POSTS, BlogPost } from './blogData';
+import ReactMarkdown from 'react-markdown';
+import { BlogPost } from './types';
+import BLOG_POSTS_JSON from './blogArticles.json';
+
+const BLOG_POSTS = BLOG_POSTS_JSON as BlogPost[];
 
 // --- Routing Helpers ---
 const slugify = (text: string) => 
@@ -165,8 +169,8 @@ const ArticleView = ({ post, onBack, onGoHome }: { post: BlogPost; onBack: () =>
         />
       </div>
 
-      <div className="article-content text-left">
-        {post.content}
+      <div className="article-content text-left prose prose-invert prose-purple max-w-none">
+        <ReactMarkdown>{post.content}</ReactMarkdown>
       </div>
 
       <div className="mt-32 pt-20 border-t border-white/5 text-center">
