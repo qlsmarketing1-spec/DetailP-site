@@ -9,14 +9,24 @@ let client: any = null;
 
 const getClient = () => {
   if (client) return client;
-  if (!SPACE_ID || !ACCESS_TOKEN) return null;
+  
+  if (!SPACE_ID || !ACCESS_TOKEN) {
+    console.error('Contentful Error: Missing SPACE_ID or ACCESS_TOKEN');
+    console.log('Current SPACE_ID:', SPACE_ID);
+    return null;
+  }
 
-  client = createClient({
-    space: SPACE_ID,
-    accessToken: ACCESS_TOKEN,
-    environment: ENVIRONMENT,
-  });
-  return client;
+  try {
+    client = createClient({
+      space: SPACE_ID,
+      accessToken: ACCESS_TOKEN,
+      environment: ENVIRONMENT,
+    });
+    return client;
+  } catch (e) {
+    console.error('Failed to create Contentful client:', e);
+    return null;
+  }
 };
 
 export const fetchBlogPosts = async (): Promise<BlogPost[]> => {
