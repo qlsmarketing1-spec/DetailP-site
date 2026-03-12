@@ -1,18 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis } from 'recharts';
-import { Routes, Route, useNavigate, useParams, Link, useLocation } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
+import Markdown from 'react-markdown';
+import { BLOG_POSTS } from './blogData';
 import { BlogPost } from './types';
-import BLOG_POSTS_JSON from './blogArticles.json';
-
-const BLOG_POSTS = BLOG_POSTS_JSON as BlogPost[];
+import { fetchBlogPosts } from './contentful';
 
 // --- Routing Helpers ---
 const slugify = (text: string) => 
   text.toLowerCase()
     .replace(/[^\w ]+/g, '')
     .replace(/ +/g, '-');
+
+const formatDate = (dateString: string) => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  } catch (e) {
+    return dateString;
+  }
+};
 
 // --- Sub-components ---
 
@@ -21,10 +34,11 @@ interface BlogCardProps {
   post: BlogPost;
   variant?: 'featured' | 'trending' | 'grid';
   onNavigate: (path: string) => void;
+  posts?: BlogPost[];
 }
 
 // Typing BlogCard as React.FC ensures standard props like 'key' are correctly handled
-const BlogCard: React.FC<BlogCardProps> = ({ post, variant = 'grid', onNavigate }) => {
+const BlogCard: React.FC<BlogCardProps> = ({ post, variant = 'grid', onNavigate, posts = [] }) => {
   const isPlaceholder = post.isPlaceholder;
 
   if (variant === 'featured') {
@@ -33,12 +47,12 @@ const BlogCard: React.FC<BlogCardProps> = ({ post, variant = 'grid', onNavigate 
         <div className="lg:w-2/3">
           <div 
             className={`aspect-[16/9] rounded-2xl overflow-hidden border border-white/10 group cursor-pointer shadow-2xl relative ${isPlaceholder ? 'opacity-50 grayscale' : ''}`}
-            onClick={!isPlaceholder ? () => onNavigate(`/blog/${slugify(post.title)}`) : undefined}
+            onClick={!isPlaceholder ? () => onNavigate(`/blog/${post.slug}`) : undefined}
           >
             <img 
               src={post.image} 
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
-              alt={post.imageAlt} 
+              alt={post.title} 
               loading="lazy"
               decoding="async"
             />
@@ -52,7 +66,7 @@ const BlogCard: React.FC<BlogCardProps> = ({ post, variant = 'grid', onNavigate 
           <div className="mt-8 text-left">
             <h2 
               className={`text-3xl md:text-5xl font-bold mb-6 leading-tight transition-colors ${isPlaceholder ? 'text-neutral-600' : 'text-[#e7e6ee] hover:text-[#5e25fa] cursor-pointer'}`}
-              onClick={!isPlaceholder ? () => onNavigate(`/blog/${slugify(post.title)}`) : undefined}
+              onClick={!isPlaceholder ? () => onNavigate(`/blog/${post.slug}`) : undefined}
             >
               {post.title}
             </h2>
@@ -63,7 +77,7 @@ const BlogCard: React.FC<BlogCardProps> = ({ post, variant = 'grid', onNavigate 
                 <span className="text-[#e7e6ee] font-bold text-sm">DetailPro Team <span className="text-neutral-500 font-normal">· Knowledge Hub</span></span>
                 <div className="flex items-center gap-3 mt-1">
                   <span className="text-xs font-bold text-[#5e25fa] bg-[#5e25fa]/10 px-2 py-0.5 rounded uppercase tracking-wider">{post.category}</span>
-                  <span className="text-neutral-500 text-xs">{post.date} · {post.readingTime}</span>
+                  <span className="text-neutral-500 text-xs">{formatDate(post.publishDate)} · {post.readTime}</span>
                 </div>
               </div>
             </div>
@@ -76,13 +90,13 @@ const BlogCard: React.FC<BlogCardProps> = ({ post, variant = 'grid', onNavigate 
               Trending on DetailPro
             </h3>
             <div className="space-y-8">
-              {BLOG_POSTS.slice(0, 4).filter(p => !p.isPlaceholder).map((trending) => (
-                <div key={trending.id} className="group cursor-pointer flex gap-4" onClick={() => onNavigate(`/blog/${slugify(trending.title)}`)}>
+              {posts.slice(0, 4).filter(p => !p.isPlaceholder).map((trending) => (
+                <div key={trending.id} className="group cursor-pointer flex gap-4" onClick={() => onNavigate(`/blog/${trending.slug}`)}>
                   <div className="w-24 h-16 shrink-0 rounded-lg overflow-hidden border border-white/5 bg-neutral-800">
                     <img 
                       src={trending.image} 
                       className="w-full h-full object-cover opacity-40 group-hover:scale-110 transition-transform duration-500" 
-                      alt={trending.imageAlt}
+                      alt={trending.title}
                       loading="lazy"
                       decoding="async"
                     />
@@ -90,7 +104,7 @@ const BlogCard: React.FC<BlogCardProps> = ({ post, variant = 'grid', onNavigate 
                   <div className="flex flex-col justify-center text-left">
                     <h4 className="text-neutral-500 font-bold text-sm line-clamp-2 leading-snug group-hover:text-[#5e25fa] transition-colors">{trending.title}</h4>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className="text-[10px] text-neutral-600">{trending.date}</span>
+                      <span className="text-[10px] text-neutral-600">{formatDate(trending.publishDate)}</span>
                     </div>
                   </div>
                 </div>
@@ -105,13 +119,13 @@ const BlogCard: React.FC<BlogCardProps> = ({ post, variant = 'grid', onNavigate 
   return (
     <div 
       className={`group flex flex-col h-full bg-[#050119]/20 border border-white/5 rounded-2xl overflow-hidden transition-all duration-300 ${!isPlaceholder ? 'cursor-pointer hover:border-[#5e25fa]/20' : 'cursor-default'}`}
-      onClick={!isPlaceholder ? () => onNavigate(`/blog/${slugify(post.title)}`) : undefined}
+      onClick={!isPlaceholder ? () => onNavigate(`/blog/${post.slug}`) : undefined}
     >
       <div className={`aspect-video overflow-hidden bg-[#050119] ${isPlaceholder ? 'opacity-30' : ''}`}>
         <img 
           src={post.image} 
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
-          alt={post.imageAlt} 
+          alt={post.title} 
           loading="lazy"
           decoding="async"
         />
@@ -120,7 +134,7 @@ const BlogCard: React.FC<BlogCardProps> = ({ post, variant = 'grid', onNavigate 
         <h3 className={`text-lg font-bold mb-3 transition-colors line-clamp-2 leading-tight ${isPlaceholder ? 'text-neutral-600' : 'text-[#e7e6ee] group-hover:text-[#5e25fa]'}`}>{post.title}</h3>
         <p className="text-neutral-500 text-sm line-clamp-2 mb-6 leading-relaxed flex-1">{post.description}</p>
         <div className="flex items-center gap-2 mt-auto">
-          <span className="text-[10px] text-neutral-600">{post.date} · {post.readingTime}</span>
+          <span className="text-[10px] text-neutral-600">{formatDate(post.publishDate)} · {post.readTime}</span>
           <span className="text-[10px] text-[#5e25fa]/40 bg-[#5e25fa]/5 px-2 py-0.5 rounded uppercase font-bold tracking-widest">{post.category}</span>
         </div>
       </div>
@@ -153,8 +167,8 @@ const ArticleView = ({ post, onBack, onGoHome }: { post: BlogPost; onBack: () =>
         <div className="flex items-center gap-6 py-8 border-y border-white/5">
           <div className="w-12 h-12 rounded-full bg-[#5e25fa] flex items-center justify-center font-black text-[#e7e6ee]">DP</div>
           <div className="flex flex-col">
-            <span className="text-[#e7e6ee] font-bold">DetailPro Team</span>
-            <span className="text-neutral-500 text-sm">Knowledge Hub · {post.date} · {post.readingTime} Read</span>
+            <span className="text-[#e7e6ee] font-bold">{post.author || 'DetailPro Team'}</span>
+            <span className="text-neutral-500 text-sm">Knowledge Hub · {formatDate(post.publishDate)} · {post.readTime} Read</span>
           </div>
         </div>
       </div>
@@ -163,14 +177,18 @@ const ArticleView = ({ post, onBack, onGoHome }: { post: BlogPost; onBack: () =>
         <img 
           src={post.image} 
           className="w-full h-full object-cover" 
-          alt={post.imageAlt} 
+          alt={post.title} 
           fetchPriority="high"
           decoding="async"
         />
       </div>
 
-      <div className="article-content text-left prose prose-invert prose-purple max-w-none">
-        <ReactMarkdown>{post.content}</ReactMarkdown>
+      <div className="article-content text-left text-neutral-400 prose prose-invert prose-purple max-w-none">
+        {typeof post.content === 'string' ? (
+          <Markdown>{post.content}</Markdown>
+        ) : (
+          post.content
+        )}
       </div>
 
       <div className="mt-32 pt-20 border-t border-white/5 text-center">
@@ -358,7 +376,7 @@ const LegalView = ({ type, onBack }: { type: 'terms' | 'privacy'; onBack: () => 
         <Icon icon="mdi-light:arrow-left" className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
         Back to Home
       </button>
-      <div className="prose prose-invert prose-neutral max-w-none text-left">
+      <div className="prose prose-invert prose-neutral article-content max-w-none text-left">
         {content}
       </div>
     </div>
@@ -369,7 +387,7 @@ const LogoTicker = () => {
   const logos = [
     { name: 'AUTO ARMOR', font: 'font-sans font-bold tracking-tighter' },
     { name: 'Precision Shine', font: 'font-serif-italic text-2xl' },
-    { name: 'ELITE CERAMIC', font: 'font-sans font-black tracking-widest' },
+    { name: 'SHINE SQUAD', font: 'font-squartiqa text-2xl tracking-widest' },
     { name: 'DetailForce', font: 'font-sans font-bold' },
     { name: 'CERAMIC PRO SHOP', font: 'font-sans font-black' },
     { name: 'Gloss Theory', font: 'font-serif-italic font-semibold' },
@@ -498,61 +516,50 @@ const FAQItem = ({ question, answer }: { question: string, answer: string }) => 
   );
 };
 
-const BlogView = ({ onNavigate }: { onNavigate: (path: string) => void }) => {
-  const { slug } = useParams();
-  const navigate = useNavigate();
-
-  if (slug) {
-    const post = BLOG_POSTS.find(p => slugify(p.title) === slug);
-    if (post) {
-      return (
-        <ArticleView 
-          post={post} 
-          onBack={() => onNavigate('/blog')} 
-          onGoHome={() => onNavigate('/')} 
-        />
-      );
-    }
-    // If post not found, redirect to blog list
-    useEffect(() => {
-      navigate('/blog', { replace: true });
-    }, [navigate]);
-    return null;
-  }
-
-  return (
-    <div className="max-w-7xl mx-auto px-6 pt-16 pb-40 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="text-left mb-16">
-        <h1 className="text-4xl md:text-6xl font-bold text-[#e7e6ee] tracking-tight mb-6">DetailPro Knowledge Hub</h1>
-        <p className="text-neutral-400 text-lg max-w-2xl">Expert insights on scaling your detailing business, mastering fleet contracts, and automating your shop workflows.</p>
-      </div>
-      
-      {/* Featured Post */}
-      {BLOG_POSTS.length > 0 && (
-        <BlogCard post={BLOG_POSTS[0]} variant="featured" onNavigate={onNavigate} />
-      )}
-
-      {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {BLOG_POSTS.slice(1).map((post) => (
-          <BlogCard key={post.id} post={post} onNavigate={onNavigate} />
-        ))}
-      </div>
-    </div>
-  );
-};
-
 // --- Main App Component ---
 
 export default function App() {
   const [scrolled, setScrolled] = useState(false);
-  const navigate = useNavigate();
-  const location = useLocation();
-  const currentPath = location.pathname;
+  // Using pathname as the source of truth for routing
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadPosts = async () => {
+      setLoading(true);
+      const contentfulPosts = await fetchBlogPosts();
+      setPosts(contentfulPosts);
+      setLoading(false);
+    };
+    loadPosts();
+  }, []);
 
   // --- Derived Routing State ---
-  const isBlogView = currentPath.startsWith('/blog');
-  const isLegalView = currentPath === '/terms' || currentPath === '/privacy';
+  let currentView: 'home' | 'blog' | 'legal' = 'home';
+  let legalType: 'terms' | 'privacy' = 'terms';
+  let selectedPost: BlogPost | null = null;
+
+  if (currentPath === '/blog' || currentPath === '/blog/') {
+    currentView = 'blog';
+    selectedPost = null;
+  } else if (currentPath.startsWith('/blog/')) {
+    currentView = 'blog';
+    const slug = currentPath.replace(/^\/blog\//, '');
+    selectedPost = posts.find(p => p.slug === slug) || null;
+  } else if (currentPath === '/terms') {
+    currentView = 'legal';
+    legalType = 'terms';
+  } else if (currentPath === '/privacy') {
+    currentView = 'legal';
+    legalType = 'privacy';
+  }
+
+  useEffect(() => {
+    const handlePopState = () => setCurrentPath(window.location.pathname);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -561,7 +568,8 @@ export default function App() {
   }, []);
 
   const navigateTo = (path: string) => {
-    navigate(path);
+    window.history.pushState({}, '', path);
+    setCurrentPath(path);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -604,19 +612,19 @@ export default function App() {
       </div>
 
       {/* Navigation */}
-      <nav className={`sticky top-0 z-40 transition-all duration-300 ${scrolled || isBlogView || isLegalView ? 'bg-[#050119]/90 backdrop-blur-md border-b border-white/5 py-3' : 'bg-transparent py-5'}`}>
+      <nav className={`sticky top-0 z-40 transition-all duration-300 ${scrolled || currentView === 'blog' || currentView === 'legal' ? 'bg-[#050119]/90 backdrop-blur-md border-b border-white/5 py-3' : 'bg-transparent py-5'}`}>
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
           <div className="flex items-center gap-10">
-            <Link to="/" onClick={handleNavigateHome} className="flex items-center group">
+            <a href="/" onClick={handleNavigateHome} className="flex items-center group">
               <img 
                 src="https://storage.googleapis.com/detail_pro_main/Logos/DetailPro_FinalLogos-13-cropped.svg" 
                 alt="DetailPro - Auto Detailing Software and Growth Systems" 
                 className="h-8 md:h-10 w-auto group-hover:scale-105 transition-transform duration-300"
               />
-            </Link>
+            </a>
           </div>
           <div className="flex items-center gap-8">
-            <Link to="/blog" onClick={handleNavigateBlog} className={`hidden lg:block text-sm font-medium text-neutral-400 hover:text-[#e7e6ee] transition-colors ${isBlogView ? 'text-[#e7e6ee] underline underline-offset-8 decoration-[#5e25fa] decoration-2' : ''}`}>Blog</Link>
+            <a href="/blog" onClick={handleNavigateBlog} className={`hidden lg:block text-sm font-medium text-neutral-400 hover:text-[#e7e6ee] transition-colors ${currentView === 'blog' ? 'text-[#e7e6ee] underline underline-offset-8 decoration-[#5e25fa] decoration-2' : ''}`}>Blog</a>
             <button className="text-neutral-400 hover:text-[#e7e6ee] transition-colors hidden md:block">
               <Icon icon="mdi-light:magnify" className="w-5 h-5" />
             </button>
@@ -627,205 +635,202 @@ export default function App() {
         </div>
       </nav>
 
-      <Routes>
-        <Route path="/" element={
-          <main className="animate-in fade-in duration-500">
-            {/* Hero Section */}
-            <section className="relative overflow-hidden pt-16 pb-32">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-[#5e25fa] rounded-full blur-[120px] opacity-10 -z-10 pointer-events-none"></div>
-              
-              <div className="z-10 text-center max-w-5xl mx-auto px-6">
-                <div className="inline-flex items-center gap-2 bg-[#050119]/50 border border-white/10 rounded-full pl-1 pr-4 py-1 mb-8 backdrop-blur-sm">
-                  <span className="text-[10px] font-bold text-[#e7e6ee] bg-[#5e25fa] rounded-full px-2 py-0.5 shadow-sm">Built By Detailers</span>
-                  <span className="text-sm font-medium text-neutral-300">The Growth Partner for High-Performance Shops</span>
-                </div>
+      {currentView === 'home' ? (
+        <main className="animate-in fade-in duration-500">
+          {/* Hero Section */}
+          <section className="relative overflow-hidden pt-16 pb-32">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-[#5e25fa] rounded-full blur-[120px] opacity-10 -z-10 pointer-events-none"></div>
+            
+            <div className="z-10 text-center max-w-5xl mx-auto px-6">
+              <div className="inline-flex items-center gap-2 bg-[#050119]/50 border border-white/10 rounded-full pl-1 pr-4 py-1 mb-8 backdrop-blur-sm">
+                <span className="text-[10px] font-bold text-[#e7e6ee] bg-[#5e25fa] rounded-full px-2 py-0.5 shadow-sm">Built By Detailers</span>
+                <span className="text-sm font-medium text-neutral-300">The Growth Partner for High-Performance Shops</span>
+              </div>
 
-                <h1 className="leading-[1.1] text-4xl sm:text-5xl md:text-7xl font-bold text-[#e7e6ee] tracking-tight mb-8">
-                  Auto Detailing Software for Shops Ready to Scale<br className="hidden md:block" />
-                  <span className="font-serif-italic font-normal text-[#5e25fa] drop-shadow-[0_0_15px_rgba(94,37,250,0.3)]">Built to generate booked jobs.</span>
-                </h1>
+              <h1 className="leading-[1.1] text-4xl sm:text-5xl md:text-7xl font-bold text-[#e7e6ee] tracking-tight mb-8">
+                Auto Detailing Software for Shops Ready to Scale<br className="hidden md:block" />
+                <span className="font-serif-italic font-normal text-[#5e25fa] drop-shadow-[0_0_15px_rgba(94,37,250,0.3)]">Built to generate booked jobs.</span>
+              </h1>
 
-                <p className="md:text-xl text-lg text-neutral-400 max-w-2xl mx-auto mb-12">
-                  We help serious detailers install systems for ads, follow-up, booking, and fleet work — so growth feels predictable, not chaotic.
-                </p>
+              <p className="md:text-xl text-lg text-neutral-400 max-w-2xl mx-auto mb-12">
+                We help serious detailers install systems for ads, follow-up, booking, and fleet work — so growth feels predictable, not chaotic.
+              </p>
 
-                <div className="flex flex-col items-center gap-6 mb-24">
-                  <button onClick={openCalendly} className="group relative bg-[#5e25fa] hover:bg-[#280aa5] text-[#e7e6ee] text-lg font-bold px-10 py-5 rounded-xl shadow-[0_0_30px_rgba(94,37,250,0.4)] transition-all flex items-center gap-3 border border-white/10">
-                    Book My Free Demo
-                    <Icon icon="mdi-light:arrow-right" className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-                  </button>
-                  <div className="flex items-center gap-4 text-sm text-neutral-500 bg-[#050119]/80 px-4 py-2 rounded-full border border-white/5 backdrop-blur-sm">
-                    <div className="flex -space-x-2">
-                      {[1,2,3].map(i => <img key={i} src={`https://picsum.photos/seed/face${i}/40/40`} className="w-6 h-6 rounded-full border border-neutral-900" alt="Car detailing business owner success story profile" loading="lazy" decoding="async" />)}
-                    </div>
-                    <span>Join the detailers scaling their shops with DetailPro.</span>
+              <div className="flex flex-col items-center gap-6 mb-24">
+                <button onClick={openCalendly} className="group relative bg-[#5e25fa] hover:bg-[#280aa5] text-[#e7e6ee] text-lg font-bold px-10 py-5 rounded-xl shadow-[0_0_30px_rgba(94,37,250,0.4)] transition-all flex items-center gap-3 border border-white/10">
+                  Book My Free Demo
+                  <Icon icon="mdi-light:arrow-right" className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                </button>
+                <div className="flex items-center gap-4 text-sm text-neutral-500 bg-[#050119]/80 px-4 py-2 rounded-full border border-white/5 backdrop-blur-sm">
+                  <div className="flex -space-x-2">
+                    {[1,2,3].map(i => <img key={i} src={`https://picsum.photos/seed/face${i}/40/40`} className="w-6 h-6 rounded-full border border-neutral-900" alt="Car detailing business owner success story profile" loading="lazy" decoding="async" />)}
                   </div>
+                  <span>Join the detailers scaling their shops with DetailPro.</span>
                 </div>
+              </div>
 
-                {/* VSL Placeholder */}
-                <div className="max-w-4xl mx-auto relative group" onClick={openCalendly}>
-                  <div className="absolute -inset-1 bg-gradient-to-b from-[#5e25fa]/20 to-transparent rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity"></div>
-                  <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-[#050119] aspect-video ring-1 ring-black/5 cursor-pointer">
-                    <img 
-                      src="https://picsum.photos/seed/detailingvsl/1200/675" 
-                      alt="DetailPro business growth systems and detailing shop management software overview" 
-                      className="w-full h-full object-cover opacity-50 group-hover:scale-105 transition-transform duration-700" 
-                      fetchPriority="high"
-                      decoding="async"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-full border border-white/20 flex items-center justify-center shadow-2xl group-hover:scale-110 transition-all duration-300">
-                        <Icon icon="mdi-light:play" className="w-8 h-8 text-[#e7e6ee] ml-1" />
-                      </div>
+              {/* VSL Placeholder */}
+              <div className="max-w-4xl mx-auto relative group" onClick={openCalendly}>
+                <div className="absolute -inset-1 bg-gradient-to-b from-[#5e25fa]/20 to-transparent rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity"></div>
+                <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-[#050119] aspect-video ring-1 ring-black/5 cursor-pointer">
+                  <img 
+                    src="https://picsum.photos/seed/detailingvsl/1200/675" 
+                    alt="DetailPro business growth systems and detailing shop management software overview" 
+                    className="w-full h-full object-cover opacity-50 group-hover:scale-105 transition-transform duration-700" 
+                    fetchPriority="high"
+                    decoding="async"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-full border border-white/20 flex items-center justify-center shadow-2xl group-hover:scale-110 transition-all duration-300">
+                      <Icon icon="mdi-light:play" className="w-8 h-8 text-[#e7e6ee] ml-1" />
                     </div>
-                    <div className="absolute bottom-8 left-8 text-left">
-                      <h3 className="text-xl font-bold text-[#e7e6ee] mb-1">From $5k to $22k/mo in 90 Days</h3>
-                      <p className="text-neutral-400 text-sm">See the exact system used by CleanAuto Detailing</p>
-                    </div>
+                  </div>
+                  <div className="absolute bottom-8 left-8 text-left">
+                    <h3 className="text-xl font-bold text-[#e7e6ee] mb-1">From $5k to $22k/mo in 90 Days</h3>
+                    <p className="text-neutral-400 text-sm">See the exact system used by CleanAuto Detailing</p>
                   </div>
                 </div>
               </div>
-            </section>
+            </div>
+          </section>
 
-            <LogoTicker />
+          <LogoTicker />
 
-            {/* Problem Section */}
-            <section className="py-32 relative border-y border-white/5 bg-[#050119]">
-              {/* Requested Branding Pattern Background */}
-              <div className="absolute inset-0 opacity-10 bg-[url('https://storage.googleapis.com/detail_pro_main/Logos/DetailPro_Patterns-06.png')] bg-repeat pointer-events-none mix-blend-screen"></div>
-              
-              <div className="max-w-7xl mx-auto px-6 relative z-10">
-                <div className="text-center mb-20">
-                  <h2 className="md:text-6xl text-4xl font-bold text-[#e7e6ee] tracking-tight mb-4 text-center">
-                    Tired of the <br className="hidden md:block" />
-                    <span className="font-normal font-serif-italic text-[#5e25fa]">detailing grind?</span>
-                  </h2>
-                </div>
+          {/* Problem Section */}
+          <section className="py-32 relative border-y border-white/5 bg-[#050119]">
+            {/* Requested Branding Pattern Background */}
+            <div className="absolute inset-0 opacity-10 bg-[url('https://storage.googleapis.com/detail_pro_main/Logos/DetailPro_Patterns-06.png')] bg-repeat pointer-events-none mix-blend-screen"></div>
+            
+            <div className="max-w-7xl mx-auto px-6 relative z-10">
+              <div className="text-center mb-20">
+                <h2 className="md:text-6xl text-4xl font-bold text-[#e7e6ee] tracking-tight mb-4 text-center">
+                  Tired of the <br className="hidden md:block" />
+                  <span className="font-normal font-serif-italic text-[#5e25fa]">detailing grind?</span>
+                </h2>
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-20">
-                  {[
-                    { icon: 'mdi-light:phone', text: "Missing calls because you're busy ceramic coating a truck." },
-                    { icon: 'mdi-light:alert-circle', text: "Leads inquire on Facebook, but ghost you when you reply 2 hours later." },
-                    { 
-                      icon: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M3 4h1v9h3V7h5v4h4v4h4v6H3zm13 12v4h3v-4zm-4-4v8h3v-8zM8 8v12h3V8zm-4 6v6h3v-6z"/></svg>, 
-                      text: "Empty winter schedule because you rely on word-of-mouth." 
-                    },
-                    { icon: 'mdi-light:thumb-down', text: "Spending money on generic ads that just get 'How much?' comments." },
-                    { icon: 'mdi-light:clock', text: "Spending 4 hours a night texting leads back from your personal phone." },
-                    { icon: 'mdi-light:calendar', text: "Struggling to source fleet leads to give your team consistent work?" }
-                  ].map((item, idx) => (
-                    <div key={idx} className="bg-[#050119] border border-white/5 rounded-2xl p-8 hover:bg-[#050119]/80 transition-all group text-left">
-                      <div className={`w-12 h-12 rounded-xl bg-neutral-800 border border-white/10 flex items-center justify-center text-[#ceff1a] mb-6 group-hover:scale-110 transition-transform`}>
-                        {typeof item.icon === 'string' ? (
-                          <Icon icon={item.icon} className="w-6 h-6" />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-20">
+                {[
+                  { icon: 'mdi-light:phone', text: "Missing calls because you're busy ceramic coating a truck." },
+                  { icon: 'mdi-light:alert-circle', text: "Leads inquire on Facebook, but ghost you when you reply 2 hours later." },
+                  { 
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M3 4h1v9h3V7h5v4h4v4h4v6H3zm13 12v4h3v-4zm-4-4v8h3v-8zM8 8v12h3V8zm-4 6v6h3v-6z"/></svg>, 
+                    text: "Empty winter schedule because you rely on word-of-mouth." 
+                  },
+                  { icon: 'mdi-light:thumb-down', text: "Spending money on generic ads that just get 'How much?' comments." },
+                  { icon: 'mdi-light:clock', text: "Spending 4 hours a night texting leads back from your personal phone." },
+                  { icon: 'mdi-light:calendar', text: "Struggling to source fleet leads to give your team consistent work?" }
+                ].map((item, idx) => (
+                  <div key={idx} className="bg-[#050119] border border-white/5 rounded-2xl p-8 hover:bg-[#050119]/80 transition-all group text-left">
+                    <div className={`w-12 h-12 rounded-xl bg-neutral-800 border border-white/10 flex items-center justify-center text-[#ceff1a] mb-6 group-hover:scale-110 transition-transform`}>
+                      {typeof item.icon === 'string' ? (
+                        <Icon icon={item.icon} className="w-6 h-6" />
+                      ) : (
+                        <div className="w-6 h-6 flex items-center justify-center text-current">{item.icon}</div>
+                      )}
+                    </div>
+                    <p className="text-lg font-medium text-neutral-300 leading-relaxed">{item.text}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-center">
+                <button onClick={openCalendly} className="group relative inline-flex items-center gap-3 bg-gradient-to-r from-[#5e25fa] to-[#280aa5] text-[#e7e6ee] text-xl font-bold px-12 py-5 rounded-xl shadow-2xl transition-all">
+                  Fix My Shop Today
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* Solution Grid */}
+          <section id="system" className="bg-[#050119] py-32">
+            <div className="max-w-7xl mx-auto px-6">
+              <h2 className="text-4xl md:text-5xl font-bold text-[#e7e6ee] text-center mb-20 tracking-tight">The DetailPro Triad</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {[
+                  { 
+                    icon: 'mdi-light:chart-line', 
+                    title: 'High-Intent Ads', 
+                    desc: "We don't just 'boost posts'. We run proven ad sets that attract people looking for premium detailing and ceramic coatings.",
+                    color: 'purple'
+                  },
+                  { 
+                    icon: 'mdi-light:flash', 
+                    title: 'Instant Automation', 
+                    desc: "The second a lead inquires, they get an SMS. We book the job on the spot before they look at another shop's page.",
+                    color: 'indigo'
+                  },
+                  { 
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h13a3 3 0 0 1 3 3v13a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3m0 1a2 2 0 0 0-2 2v3h5V4zM3 19a2 2 0 0 0 2 2h3v-5H3zm5-9H3v5h5zm10 11a2 2 0 0 0 2-2v-3h-5v5zm2-11h-5v5h5zm0-4a2 2 0 0 0-2-2h-3v5h5zM9 4v5h5V4zm0 17h5v-5H9zm5-11H9v5h5z"/></svg>, 
+                    title: 'Detailing CRM', 
+                    desc: "A dashboard built just for you. Manage consumer jobs, fleet contracts, and ceramic maintenance with ease.",
+                    color: 'blue'
+                  }
+                ].map((solution, i) => (
+                  <div key={i} className="group bg-[#050119] border border-white/10 rounded-[32px] p-8 relative overflow-hidden flex flex-col hover:border-[#5e25fa]/20 transition-all text-left">
+                    <div className={`absolute top-0 left-0 w-64 h-64 bg-[#5e25fa] rounded-full blur-[100px] -translate-x-1/2 -translate-y-1/2 opacity-10 animate-pulse-slow`}></div>
+                    <div className="relative z-10">
+                      <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-8">
+                        {typeof solution.icon === 'string' ? (
+                          <Icon icon={solution.icon} className={`w-7 h-7 text-[#5e25fa]`} />
                         ) : (
-                          <div className="w-6 h-6 flex items-center justify-center text-current">{item.icon}</div>
+                          <div className="w-7 h-7 flex items-center justify-center text-[#5e25fa]">{solution.icon}</div>
                         )}
                       </div>
-                      <p className="text-lg font-medium text-neutral-300 leading-relaxed">{item.text}</p>
+                      <h3 className="text-2xl font-bold text-[#e7e6ee] mb-4">{solution.title}</h3>
+                      <p className="text-neutral-400 leading-relaxed">{solution.desc}</p>
                     </div>
-                  ))}
-                </div>
-
-                <div className="text-center">
-                  <button onClick={openCalendly} className="group relative inline-flex items-center gap-3 bg-gradient-to-r from-[#5e25fa] to-[#280aa5] text-[#e7e6ee] text-xl font-bold px-12 py-5 rounded-xl shadow-2xl transition-all">
-                    Fix My Shop Today
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            {/* Solution Grid */}
-            <section id="system" className="bg-[#050119] py-32">
-              <div className="max-w-7xl mx-auto px-6">
-                <h2 className="text-4xl md:text-5xl font-bold text-[#e7e6ee] text-center mb-20 tracking-tight">The DetailPro Triad</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  {[
-                    { 
-                      icon: 'mdi-light:chart-line', 
-                      title: 'High-Intent Ads', 
-                      desc: "We don't just 'boost posts'. We run proven ad sets that attract people looking for premium detailing and ceramic coatings.",
-                      color: 'purple'
-                    },
-                    { 
-                      icon: 'mdi-light:flash', 
-                      title: 'Instant Automation', 
-                      desc: "The second a lead inquires, they get an SMS. We book the job on the spot before they look at another shop's page.",
-                      color: 'indigo'
-                    },
-                    { 
-                      icon: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h13a3 3 0 0 1 3 3v13a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3m0 1a2 2 0 0 0-2 2v3h5V4zM3 19a2 2 0 0 0 2 2h3v-5H3zm5-9H3v5h5zm10 11a2 2 0 0 0 2-2v-3h-5v5zm2-11h-5v5h5zm0-4a2 2 0 0 0-2-2h-3v5h5zM9 4v5h5V4zm0 17h5v-5H9zm5-11H9v5h5z"/></svg>, 
-                      title: 'Detailing CRM', 
-                      desc: "A dashboard built just for you. Manage consumer jobs, fleet contracts, and ceramic maintenance with ease.",
-                      color: 'blue'
-                    }
-                  ].map((solution, i) => (
-                    <div key={i} className="group bg-[#050119] border border-white/10 rounded-[32px] p-8 relative overflow-hidden flex flex-col hover:border-[#5e25fa]/20 transition-all text-left">
-                      <div className={`absolute top-0 left-0 w-64 h-64 bg-[#5e25fa] rounded-full blur-[100px] -translate-x-1/2 -translate-y-1/2 opacity-10 animate-pulse-slow`}></div>
-                      <div className="relative z-10">
-                        <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-8">
-                          {typeof solution.icon === 'string' ? (
-                            <Icon icon={solution.icon} className={`w-7 h-7 text-[#5e25fa]`} />
-                          ) : (
-                            <div className="w-7 h-7 flex items-center justify-center text-[#5e25fa]">{solution.icon}</div>
-                          )}
-                        </div>
-                        <h3 className="text-2xl font-bold text-[#e7e6ee] mb-4">{solution.title}</h3>
-                        <p className="text-neutral-400 leading-relaxed">{solution.desc}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            <AutomationVisual />
-
-            {/* How It Works */}
-            <section id="how-it-works" className="py-32 bg-[#050119] relative">
-              <div className="max-w-5xl mx-auto px-6">
-                <div className="text-center mb-24">
-                  <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-1.5 mb-6">
-                    <div className="w-2 h-2 rounded-full bg-[#5e25fa] animate-pulse"></div>
-                    <span className="text-xs font-bold text-[#e7e6ee] tracking-widest uppercase">Simple Execution</span>
                   </div>
-                  <h2 className="text-4xl md:text-6xl font-bold text-[#e7e6ee] tracking-tight leading-tight">Fill your calendar <br /> in 3 steps</h2>
-                </div>
+                ))}
+              </div>
+            </div>
+          </section>
 
-                <div className="space-y-12">
-                  {[
-                    { step: 1, title: 'Launch Professional Ads', color: 'purple', icon: 'mdi-light:send', desc: "We deploy our library of 'Battle-Tested' detailing ads to your local market. No guesswork, just high-intent leads interested in your services." },
-                    { step: 2, title: 'Automated 24/7 Follow-Up', color: 'indigo', icon: 'mdi-light:message', desc: "Our system text leads instantly. It answers basic questions, shares your pricing, and pushes them to book — while you stay on the buffer." },
-                    { step: 3, title: 'Show Up & Wash', color: 'blue', icon: 'mdi-light:calendar', desc: "Your calendar fills up with qualified jobs. You just check your booking app in the morning, see where you need to be, and go do what you do best." }
-                  ].map((phase, i) => (
-                    <div key={i} className="sticky top-24 mb-12">
-                      <div className="bg-[#050119] border border-white/10 rounded-[2.5rem] p-8 md:p-12 shadow-2xl flex flex-col md:flex-row gap-12 min-h-[400px]">
-                        <div className="md:w-1/2 flex flex-col justify-center text-left">
-                          <div className="flex items-center gap-3 mb-6">
-                            <div className={`bg-[#5e25fa]/10 text-[#5e25fa] p-2 rounded-lg border border-[#5e25fa]/20`}>
-                              <Icon icon={phase.icon} className="w-6 h-6" />
-                            </div>
-                            <span className={`uppercase text-sm font-black tracking-widest text-[#5e25fa]`}>Step {phase.step}</span>
+          {/* How It Works */}
+          <section id="how-it-works" className="py-32 bg-[#050119] relative">
+            <div className="max-w-5xl mx-auto px-6">
+              <div className="text-center mb-24">
+                <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-1.5 mb-6">
+                  <div className="w-2 h-2 rounded-full bg-[#5e25fa] animate-pulse"></div>
+                  <span className="text-xs font-bold text-[#e7e6ee] tracking-widest uppercase">Simple Execution</span>
+                </div>
+                <h2 className="text-4xl md:text-6xl font-bold text-[#e7e6ee] tracking-tight leading-tight">Fill your calendar <br /> in 3 steps</h2>
+              </div>
+
+              <div className="space-y-12">
+                {[
+                  { step: 1, title: 'Launch Professional Ads', color: 'purple', icon: 'mdi-light:send', desc: "We deploy our library of 'Battle-Tested' detailing ads to your local market. No guesswork, just high-intent leads interested in your services." },
+                  { step: 2, title: 'Automated 24/7 Follow-Up', color: 'indigo', icon: 'mdi-light:message', desc: "Our system text leads instantly. It answers basic questions, shares your pricing, and pushes them to book — while you stay on the buffer." },
+                  { step: 3, title: 'Show Up & Wash', color: 'blue', icon: 'mdi-light:calendar', desc: "Your calendar fills up with qualified jobs. You just check your booking app in the morning, see where you need to be, and go do what you do best." }
+                ].map((phase, i) => (
+                  <div key={i} className="sticky top-24 mb-12">
+                    <div className="bg-[#050119] border border-white/10 rounded-[2.5rem] p-8 md:p-12 shadow-2xl flex flex-col md:flex-row gap-12 min-h-[400px]">
+                      <div className="md:w-1/2 flex flex-col justify-center text-left">
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className={`bg-[#5e25fa]/10 text-[#5e25fa] p-2 rounded-lg border border-[#5e25fa]/20`}>
+                            <Icon icon={phase.icon} className="w-6 h-6" />
                           </div>
-                          <h3 className="text-3xl font-bold text-[#e7e6ee] mb-4">{phase.title}</h3>
-                          <p className="text-neutral-400 text-lg leading-relaxed">{phase.desc}</p>
+                          <span className={`uppercase text-sm font-black tracking-widest text-[#5e25fa]`}>Step {phase.step}</span>
                         </div>
-                        <div className="md:w-1/2 bg-black/40 rounded-3xl border border-white/5 flex flex-col justify-center overflow-hidden min-h-[300px]">
-                          {phase.step === 1 ? (
-                            <img 
-                              src="https://images.unsplash.com/photo-1607860108855-64acf2078ed9?q=80&w=2071&auto=format&fit=crop" 
-                              className="w-full h-full object-cover rounded-2xl" 
-                              alt="Auto detailing lead generation strategy 2026 - professional car wash foam application"
-                              loading="lazy"
-                              decoding="async"
-                            />
-                          ) : phase.step === 3 ? (
-                            <div className="h-48 w-full px-8">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={chartData}>
-                                  <Bar dataKey="value" fill="#5e25fa" radius={[4, 4, 0, 0]} />
-                                  <XAxis dataKey="name" hide />
+                        <h3 className="text-3xl font-bold text-[#e7e6ee] mb-4">{phase.title}</h3>
+                        <p className="text-neutral-400 text-lg leading-relaxed">{phase.desc}</p>
+                      </div>
+                      <div className="md:w-1/2 bg-black/40 rounded-3xl border border-white/5 flex flex-col justify-center overflow-hidden min-h-[300px]">
+                        {phase.step === 1 ? (
+                          <img 
+                            src="https://images.unsplash.com/photo-1607860108855-64acf2078ed9?q=80&w=2071&auto=format&fit=crop" 
+                            className="w-full h-full object-cover rounded-2xl" 
+                            alt="Auto detailing lead generation strategy 2026 - professional car wash foam application"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ) : phase.step === 3 ? (
+                          <div className="h-48 w-full px-8">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={chartData}>
+                                <Bar dataKey="value" fill="#5e25fa" radius={[4, 4, 0, 0]} />
+                                <XAxis dataKey="name" hide />
                                 <YAxis hide />
                               </BarChart>
                             </ResponsiveContainer>
@@ -963,32 +968,53 @@ export default function App() {
             </div>
           </section>
         </main>
-      } />
-      <Route path="/blog" element={<BlogView onNavigate={navigateTo} />} />
-      <Route path="/blog/:slug" element={<BlogView onNavigate={navigateTo} />} />
-      <Route path="/terms" element={<LegalView type="terms" onBack={() => navigateTo('/')} />} />
-      <Route path="/privacy" element={<LegalView type="privacy" onBack={() => navigateTo('/')} />} />
-      <Route path="*" element={
-        <div className="min-h-[60vh] flex flex-col items-center justify-center text-center px-6">
-          <h1 className="text-6xl font-bold text-[#e7e6ee] mb-4">404</h1>
-          <p className="text-neutral-400 mb-8">The page you're looking for doesn't exist.</p>
-          <button onClick={() => navigateTo('/')} className="bg-[#5e25fa] text-[#e7e6ee] font-bold px-8 py-3 rounded-xl">Go Home</button>
+      ) : currentView === 'blog' ? (
+        <div className="max-w-7xl mx-auto px-6 py-20">
+          {selectedPost ? (
+            <ArticleView post={selectedPost} onBack={() => navigateTo('/blog')} onGoHome={() => handleNavigateHome()} />
+          ) : (
+            <>
+              <div className="text-center mb-20">
+                <h1 className="text-4xl md:text-6xl font-bold text-[#e7e6ee] mb-6">The Knowledge Hub</h1>
+                <p className="text-neutral-400 text-lg max-w-2xl mx-auto">Systems, strategies, and insights for detailers ready to dominate their local market.</p>
+              </div>
+              
+              {loading ? (
+                <div className="flex items-center justify-center py-20">
+                  <div className="w-12 h-12 border-4 border-[#5e25fa] border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              ) : (
+                <>
+                  {posts.filter(p => p.featured).map(post => (
+                    <BlogCard key={post.id} post={post} variant="featured" onNavigate={navigateTo} posts={posts} />
+                  ))}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mt-24">
+                    {posts.filter(p => !p.featured).map(post => (
+                      <BlogCard key={post.id} post={post} onNavigate={navigateTo} />
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
-      } />
-    </Routes>
+      ) : (
+        <LegalView type={legalType} onBack={() => handleNavigateHome()} />
+      )}
 
       {/* Footer */}
       <footer className="bg-[#050119] border-t border-white/5 py-16">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-8 mb-12">
             <div className="flex flex-col items-center md:items-start gap-4">
-              <Link to="/" onClick={handleNavigateHome} className="group transition-colors">
+              <a href="/" onClick={handleNavigateHome} className="group transition-colors">
                 <img 
                   src="https://storage.googleapis.com/detail_pro_main/Logos/DetailPro_FinalLogos-13-cropped.svg" 
                   alt="DetailPro - The #1 Growth Platform for Professional Detailers" 
                   className="h-8 md:h-10 w-auto group-hover:scale-105 transition-transform duration-300"
                 />
-              </Link>
+              </a>
               <div className="text-sm text-neutral-500 font-medium text-center md:text-left">© 2026 DetailPro Technologies.<br className="md:hidden" /> Built by operators for operators.</div>
             </div>
 
@@ -1015,9 +1041,9 @@ export default function App() {
             </div>
 
             <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-center">
-              <Link to="/blog" onClick={handleNavigateBlog} className="text-neutral-500 hover:text-[#e7e6ee] transition-colors text-sm font-medium">Blog</Link>
-              <Link to="/terms" onClick={(e) => { e.preventDefault(); navigateTo('/terms'); }} className="text-neutral-500 hover:text-[#e7e6ee] transition-colors text-sm font-medium">Terms</Link>
-              <Link to="/privacy" onClick={(e) => { e.preventDefault(); navigateTo('/privacy'); }} className="text-neutral-500 hover:text-[#e7e6ee] transition-colors text-sm font-medium">Privacy</Link>
+              <a href="/blog" onClick={handleNavigateBlog} className="text-neutral-500 hover:text-[#e7e6ee] transition-colors text-sm font-medium">Blog</a>
+              <a href="/terms" onClick={(e) => { e.preventDefault(); navigateTo('/terms'); }} className="text-neutral-500 hover:text-[#e7e6ee] transition-colors text-sm font-medium">Terms</a>
+              <a href="/privacy" onClick={(e) => { e.preventDefault(); navigateTo('/privacy'); }} className="text-neutral-500 hover:text-[#e7e6ee] transition-colors text-sm font-medium">Privacy</a>
             </div>
           </div>
         </div>
